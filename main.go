@@ -240,8 +240,9 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 			assessmentResult.End = timestamppb.New(endTime)
 
 			streamId, err := sdk.SeededUUID(map[string]string{
-				"type":    "aws-cloud--ec2",
-				"_policy": policyPath,
+				"type":        "aws-cloud--ec2",
+				"_policy":     policyPath,
+				"instance_id": fmt.Sprintf("%v", instance["InstanceID"]),
 			})
 			if err != nil {
 				l.logger.Error("Failed to seedUUID", "error", err)
