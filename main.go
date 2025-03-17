@@ -145,7 +145,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 						},
 						Labels: map[string]string{
 							"package":    string(result.Policy.Package),
-							"type":       "aws-cloud--ec2",
+							"type":       "aws",
+							"service":    "ec2",
 							"instanceID": fmt.Sprintf("%v", instance["InstanceID"]),
 						},
 					})
@@ -161,7 +162,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 						},
 						Labels: map[string]string{
 							"package":    string(result.Policy.Package),
-							"type":       "aws-cloud--ec2",
+							"type":       "aws",
+							"service":    "ec2",
 							"instanceID": fmt.Sprintf("%v", instance["InstanceID"]),
 						},
 					})
@@ -185,7 +187,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 						},
 						Labels: map[string]string{
 							"package":    string(result.Policy.Package),
-							"type":       "aws-cloud--ec2",
+							"type":       "aws",
+							"service":    "ec2",
 							"instanceID": fmt.Sprintf("%v", instance["InstanceID"]),
 						},
 					})
@@ -208,7 +211,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 							},
 							Labels: map[string]string{
 								"package":    string(result.Policy.Package),
-								"type":       "aws-cloud--ec2",
+								"type":       "aws",
+								"service":    "ec2",
 								"instanceID": fmt.Sprintf("%v", instance["InstanceID"]),
 							},
 						})
@@ -240,7 +244,8 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 			assessmentResult.End = timestamppb.New(endTime)
 
 			streamId, err := sdk.SeededUUID(map[string]string{
-				"type":        "aws-cloud--ec2",
+				"type":        "aws",
+				"service":     "ec2",
 				"_policy":     policyPath,
 				"instance_id": fmt.Sprintf("%v", instance["InstanceID"]),
 			})
@@ -262,7 +267,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				streamId.String(),
 				map[string]string{
 					"type":        "aws",
-					"serice":      "ec2",
+					"service":     "ec2",
 					"instance_id": fmt.Sprintf("%v", instance["InstanceID"]),
 					"_policy":     policyPath,
 				},
