@@ -261,8 +261,10 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 			err = apiHelper.CreateResult(
 				streamId.String(),
 				map[string]string{
-					"type":    "aws-cloud--ec2",
-					"_policy": policyPath,
+					"type":        "aws",
+					"serice":      "ec2",
+					"instance_id": fmt.Sprintf("%v", instance["InstanceID"]),
+					"_policy":     policyPath,
 				},
 				policyPath,
 				assessmentResult.Result())
