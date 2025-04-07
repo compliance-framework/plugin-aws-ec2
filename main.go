@@ -4,21 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/compliance-framework/plugin-aws-ec2/internal"
-	"os"
-	"time"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
 	"github.com/compliance-framework/agent/runner/proto"
-	"github.com/compliance-framework/configuration-service/sdk"
-	"github.com/google/uuid"
+	"github.com/compliance-framework/plugin-aws-ec2/internal"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"os"
+	"slices"
 )
 
 type CompliancePlugin struct {
@@ -38,10 +34,28 @@ func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 
 func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.TODO()
-	startTime := time.Now()
 	evalStatus := proto.ExecutionStatus_SUCCESS
 	var accumulatedErrors error
 
+	activities := make([]*proto.Activity, 0)
+	activities = append(activities, &proto.Activity{
+		Title:       "Collect EC2 Machine configurations",
+		Description: "Using the Golang AWS SDK, fetch all EC2 information and metadata.",
+		Steps: []*proto.Step{
+			{
+				Title:       "Configure AWS Client",
+				Description: "Using the default configuration loaders, create a AWS client for querying the AWS API",
+			},
+			{
+				Title:       "Create a new EC2 Client",
+				Description: "In order to list and describe individual EC2 instances, we instantiate a new EC2 AWS client using the Golang AWS sdk.",
+			},
+			{
+				Title:       "Describe EC2 instances",
+				Description: "Using the newly constructed AWS client, Describe all EC2 instances available in the API, and store them in local memory.",
+			},
+		},
+	})
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(os.Getenv("AWS_REGION")))
 	if err != nil {
 		l.logger.Error("unable to load SDK config", "error", err)
@@ -57,6 +71,9 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 		l.logger.Error("unable to list instances", "error", err)
 		evalStatus = proto.ExecutionStatus_FAILURE
 		accumulatedErrors = errors.Join(accumulatedErrors, err)
+		return &proto.EvalResponse{
+			Status: proto.ExecutionStatus_FAILURE,
+		}, accumulatedErrors
 	}
 
 	// Parse instances
@@ -113,23 +130,27 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 
 	// Run policy checks
 	for _, instance := range instances {
-		activities := make([]*proto.Activity, 0)
-		findings := make([]*proto.Finding, 0)
-		observations := make([]*proto.Observation, 0)
-
-		subjectAttributeMap := map[string]string{
+		labels := map[string]string{
 			"type":        "aws",
 			"service":     "ec2",
 			"instance-id": fmt.Sprintf("%v", instance["InstanceID"]),
-			"image-id":    fmt.Sprintf("%v", instance["ImageID"]),
-			"vpc-id":      fmt.Sprintf("%v", instance["VpcID"]),
 		}
 		subjects := []*proto.SubjectReference{
 			{
-				Type:       "aws-ec2-instance",
-				Attributes: subjectAttributeMap,
-				Title:      internal.StringAddressed("AWS EC2 Instance"),
+				Type: "aws-ec2-instance",
+				Attributes: map[string]string{
+					"type":        "aws",
+					"service":     "ec2",
+					"instance-id": fmt.Sprintf("%v", instance["InstanceID"]),
+					"image-id":    fmt.Sprintf("%v", instance["ImageID"]),
+					"vpc-id":      fmt.Sprintf("%v", instance["VpcID"]),
+				},
+				Title: internal.StringAddressed("AWS EC2 Instance"),
 				Props: []*proto.Property{
+					{
+						Name:  "vpc-id",
+						Value: fmt.Sprintf("%v", instance["VpcID"]),
+					},
 					{
 						Name:  "instance-id",
 						Value: fmt.Sprintf("%v", instance["InstanceID"]),
@@ -137,6 +158,21 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 					{
 						Name:  "image-id",
 						Value: fmt.Sprintf("%v", instance["ImageID"]),
+					},
+				},
+			},
+			{
+				Type: "aws-vpc",
+				Attributes: map[string]string{
+					"type":    "aws",
+					"service": "vpc",
+					"vpc-id":  fmt.Sprintf("%v", instance["VpcID"]),
+				},
+				Title: internal.StringAddressed("AWS VPC"),
+				Props: []*proto.Property{
+					{
+						Name:  "vpc-id",
+						Value: fmt.Sprintf("%v", instance["VpcID"]),
 					},
 				},
 			},
@@ -174,163 +210,47 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 			},
 		}
 
+		findings := make([]*proto.Finding, 0)
+		observations := make([]*proto.Observation, 0)
+
 		for _, policyPath := range request.GetPolicyPaths() {
 
-			steps := make([]*proto.Step, 0)
-			steps = append(steps, &proto.Step{
-				Title:       "Compile policy bundle",
-				Description: "Using a locally addressable policy path, compile the policy files to an in memory executable.",
-			})
-			steps = append(steps, &proto.Step{
-				Title:       "Execute policy bundle",
-				Description: "Using previously collected JSON-formatted Security Group configuration, execute the compiled policies",
-			})
-
-			results, err := policyManager.New(ctx, l.logger, policyPath).Execute(ctx, "compliance_plugin", instance)
-			if err != nil {
-				l.logger.Error("policy evaluation failed", "error", err)
-				evalStatus = proto.ExecutionStatus_FAILURE
-				accumulatedErrors = errors.Join(accumulatedErrors, err)
-				continue
-			}
-
-			activities = append(activities, &proto.Activity{
-				Title:       "Execute policy",
-				Description: "Prepare and compile policy bundles, and execute them using the prepared Security Group data",
-				Steps:       steps,
-			})
-
-			for _, result := range results {
-
-				// Observation UUID should differ for each individual subject, but remain consistent when validating the same policy for the same subject.
-				// This acts as an identifier to show the history of an observation.
-				observationUUIDMap := internal.MergeMaps(subjectAttributeMap, map[string]string{
-					"type":        "observation",
-					"policy":      result.Policy.Package.PurePackage(),
-					"policy_file": result.Policy.File,
-					"policy_path": policyPath,
-				})
-				observationUUID, err := sdk.SeededUUID(observationUUIDMap)
-				if err != nil {
-					accumulatedErrors = errors.Join(accumulatedErrors, err)
-					// We've been unable to do much here, but let's try the next one regardless.
-					continue
-				}
-
-				// Finding UUID should differ for each individual subject, but remain consistent when validating the same policy for the same subject.
-				// This acts as an identifier to show the history of a finding.
-				findingUUIDMap := internal.MergeMaps(subjectAttributeMap, map[string]string{
-					"type":        "finding",
-					"policy":      result.Policy.Package.PurePackage(),
-					"policy_file": result.Policy.File,
-					"policy_path": policyPath,
-				})
-				findingUUID, err := sdk.SeededUUID(findingUUIDMap)
-				if err != nil {
-					accumulatedErrors = errors.Join(accumulatedErrors, err)
-					// We've been unable to do much here, but let's try the next one regardless.
-					continue
-				}
-
-				observation := proto.Observation{
-					ID:         uuid.New().String(),
-					UUID:       observationUUID.String(),
-					Collected:  timestamppb.New(startTime),
-					Expires:    timestamppb.New(startTime.Add(24 * time.Hour)),
-					Origins:    []*proto.Origin{{Actors: actors}},
-					Subjects:   subjects,
-					Activities: activities,
-					Components: components,
-					RelevantEvidence: []*proto.RelevantEvidence{
-						{
-							Description: fmt.Sprintf("Policy %v was executed against the AWS Security Group configuration, using the Local AWS Security Group Plugin", result.Policy.Package.PurePackage()),
-						},
+			// Explicitly reset steps to make things readable
+			processor := policyManager.NewPolicyProcessor(
+				l.logger,
+				internal.MergeMaps(
+					labels,
+					map[string]string{
+						"_policy_path": policyPath,
 					},
-				}
-
-				newFinding := func() *proto.Finding {
-					controls := make([]*proto.ControlReference, 0)
-
-					for _, control := range result.Controls {
-						controls = append(controls, &proto.ControlReference{
-							Class:        control.Class,
-							ControlId:    control.ControlID,
-							StatementIds: control.StatementIDs,
-						})
-					}
-
-					return &proto.Finding{
-						ID:        uuid.New().String(),
-						UUID:      findingUUID.String(),
-						Collected: timestamppb.New(time.Now()),
-						Labels: map[string]string{
-							"type":         "aws",
-							"service":      "ec2",
-							"instance-id":  fmt.Sprintf("%v", instance["InstanceID"]),
-							"image-id":     fmt.Sprintf("%v", instance["ImageID"]),
-							"vpc-id":       fmt.Sprintf("%v", instance["VpcID"]),
-							"_policy":      result.Policy.Package.PurePackage(),
-							"_policy_path": result.Policy.File,
-						},
-						Origins:             []*proto.Origin{{Actors: actors}},
-						Subjects:            subjects,
-						Components:          components,
-						RelatedObservations: []*proto.RelatedObservation{{ObservationUUID: observation.ID}},
-						Controls:            controls,
-					}
-				}
-
-				// There are no violations reported from the policies.
-				// We'll send the observation back to the agent
-				if len(result.Violations) == 0 {
-
-					observation.Title = internal.StringAddressed("The plugin succeeded. No compliance issues to report.")
-					observation.Description = "The plugin policies did not return any violations. The configuration is in compliance with policies."
-					observations = append(observations, &observation)
-
-					finding := newFinding()
-					finding.Title = fmt.Sprintf("No violations found on %s", result.Policy.Package.PurePackage())
-					finding.Description = fmt.Sprintf("No violations were found on the %s policy within the AWS EC2 Compliance Plugin.", result.Policy.Package.PurePackage())
-					finding.Status = &proto.FindingStatus{
-						State: runner.FindingTargetStatusSatisfied,
-					}
-					findings = append(findings, finding)
-					continue
-				}
-
-				// There are violations in the policy checks.
-				// We'll send these observations back to the agent
-				if len(result.Violations) > 0 {
-					observation.Title = internal.StringAddressed(fmt.Sprintf("Validation on %s failed.", result.Policy.Package.PurePackage()))
-					observation.Description = fmt.Sprintf("Observed %d violation(s) on the %s policy within the AWS EC2 Compliance Plugin.", len(result.Violations), result.Policy.Package.PurePackage())
-					observations = append(observations, &observation)
-
-					for _, violation := range result.Violations {
-						finding := newFinding()
-						finding.Title = violation.Title
-						finding.Description = violation.Description
-						finding.Remarks = internal.StringAddressed(violation.Remarks)
-						finding.Status = &proto.FindingStatus{
-							State: runner.FindingTargetStatusNotSatisfied,
-						}
-						findings = append(findings, finding)
-					}
-				}
+				),
+				subjects,
+				components,
+				actors,
+				activities,
+			)
+			obs, finds, err := processor.GenerateResults(ctx, policyPath, instance)
+			observations = slices.Concat(observations, obs)
+			findings = slices.Concat(findings, finds)
+			if err != nil {
+				accumulatedErrors = errors.Join(accumulatedErrors, err)
 			}
 		}
 
 		if err = apiHelper.CreateObservations(ctx, observations); err != nil {
 			l.logger.Error("Failed to send observations", "error", err)
-			return &proto.EvalResponse{
-				Status: proto.ExecutionStatus_FAILURE,
-			}, err
+			evalStatus = proto.ExecutionStatus_FAILURE
+			accumulatedErrors = errors.Join(accumulatedErrors, err)
+			// We don't stop here, but rather continue to the next instance
+			continue
 		}
 
 		if err = apiHelper.CreateFindings(ctx, findings); err != nil {
 			l.logger.Error("Failed to send findings", "error", err)
-			return &proto.EvalResponse{
-				Status: proto.ExecutionStatus_FAILURE,
-			}, err
+			evalStatus = proto.ExecutionStatus_FAILURE
+			accumulatedErrors = errors.Join(accumulatedErrors, err)
+			// We don't stop here, but rather continue to the next instance
+			continue
 		}
 	}
 
