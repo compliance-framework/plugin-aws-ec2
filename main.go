@@ -7,12 +7,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
 	"github.com/compliance-framework/agent/runner/proto"
 	"github.com/compliance-framework/plugin-aws-ec2/internal"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
+	"iter"
 	"os"
 	"slices"
 )
@@ -20,11 +22,6 @@ import (
 type CompliancePlugin struct {
 	logger hclog.Logger
 	config map[string]string
-}
-
-type Tag struct {
-	Key   string `json:"Key"`
-	Value string `json:"Value"`
 }
 
 func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
@@ -56,6 +53,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 			},
 		},
 	})
+
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(os.Getenv("AWS_REGION")))
 	if err != nil {
 		l.logger.Error("unable to load SDK config", "error", err)
@@ -63,120 +61,25 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 		accumulatedErrors = errors.Join(accumulatedErrors, err)
 	}
 
-	svc := ec2.NewFromConfig(cfg)
-
-	// Get instances
-	result, err := svc.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
-	if err != nil {
-		l.logger.Error("unable to list instances", "error", err)
-		evalStatus = proto.ExecutionStatus_FAILURE
-		accumulatedErrors = errors.Join(accumulatedErrors, err)
-		return &proto.EvalResponse{
-			Status: proto.ExecutionStatus_FAILURE,
-		}, accumulatedErrors
-	}
-
-	// Parse instances
-	var instances []map[string]interface{}
-	for _, reservation := range result.Reservations {
-		for _, instance := range reservation.Instances {
-			l.logger.Debug("instance", instance)
-
-			var tags []Tag
-			for _, tag := range instance.Tags {
-				tags = append(tags, Tag{Key: *tag.Key, Value: *tag.Value})
-			}
-
-			// Append instance to list
-			instances = append(instances, map[string]interface{}{
-				"InstanceID":          aws.ToString(instance.InstanceId),
-				"InstanceType":        string(instance.InstanceType),
-				"ImageID":             aws.ToString(instance.ImageId),
-				"PrivateIP":           aws.ToString(instance.PrivateIpAddress),
-				"PublicIP":            aws.ToString(instance.PublicIpAddress),
-				"State":               string(instance.State.Name),
-				"Tags":                tags,
-				"LaunchTime":          instance.LaunchTime,
-				"SubnetID":            aws.ToString(instance.SubnetId),
-				"VpcID":               aws.ToString(instance.VpcId),
-				"KeyName":             aws.ToString(instance.KeyName),
-				"Architecture":        string(instance.Architecture),
-				"Platform":            string(instance.Platform),
-				"PlatformDetails":     aws.ToString(instance.PlatformDetails),
-				"RootDeviceType":      string(instance.RootDeviceType),
-				"RootDeviceName":      aws.ToString(instance.RootDeviceName),
-				"VirtualizationType":  string(instance.VirtualizationType),
-				"Monitoring":          instance.Monitoring.State,
-				"SecurityGroups":      instance.SecurityGroups,
-				"BlockDeviceMappings": instance.BlockDeviceMappings,
-				"NetworkInterfaces":   instance.NetworkInterfaces,
-				"Hypervisor":          string(instance.Hypervisor),
-				"EbsOptimized":        instance.EbsOptimized,
-				"CpuOptions":          instance.CpuOptions,
-				"Placement":           instance.Placement,
-				"UsageOperation":      aws.ToString(instance.UsageOperation),
-				"MetadataOptions":     instance.MetadataOptions,
-				"MaintenanceOptions":  instance.MaintenanceOptions,
-				"HibernationOptions":  instance.HibernationOptions,
-				"InstanceLifecycle":   string(instance.InstanceLifecycle),
-				"EnclaveOptions":      instance.EnclaveOptions,
-				"TpmSupport":          aws.ToString(instance.TpmSupport),
-				"SriovNetSupport":     aws.ToString(instance.SriovNetSupport),
-			})
-		}
-	}
-
-	l.logger.Debug("evaluating data", instances)
+	client := ec2.NewFromConfig(cfg)
 
 	// Run policy checks
-	for _, instance := range instances {
+	for instance, err := range getEC2Instances(ctx, client) {
+		if err != nil {
+			l.logger.Error("unable to get instance", "error", err)
+			evalStatus = proto.ExecutionStatus_FAILURE
+			accumulatedErrors = errors.Join(accumulatedErrors, err)
+			break
+		}
+
 		labels := map[string]string{
-			"type":        "aws",
-			"service":     "ec2",
-			"instance-id": fmt.Sprintf("%v", instance["InstanceID"]),
+			"provider":    "aws",
+			"type":        "ec2",
+			"instance-id": aws.ToString(instance.InstanceId),
+			"_vpc-id":     aws.ToString(instance.VpcId),
+			"_subnet-id":  aws.ToString(instance.SubnetId),
 		}
-		subjects := []*proto.SubjectReference{
-			{
-				Type: "aws-ec2-instance",
-				Attributes: map[string]string{
-					"type":        "aws",
-					"service":     "ec2",
-					"instance-id": fmt.Sprintf("%v", instance["InstanceID"]),
-					"image-id":    fmt.Sprintf("%v", instance["ImageID"]),
-					"vpc-id":      fmt.Sprintf("%v", instance["VpcID"]),
-				},
-				Title: internal.StringAddressed("AWS EC2 Instance"),
-				Props: []*proto.Property{
-					{
-						Name:  "vpc-id",
-						Value: fmt.Sprintf("%v", instance["VpcID"]),
-					},
-					{
-						Name:  "instance-id",
-						Value: fmt.Sprintf("%v", instance["InstanceID"]),
-					},
-					{
-						Name:  "image-id",
-						Value: fmt.Sprintf("%v", instance["ImageID"]),
-					},
-				},
-			},
-			{
-				Type: "aws-vpc",
-				Attributes: map[string]string{
-					"type":    "aws",
-					"service": "vpc",
-					"vpc-id":  fmt.Sprintf("%v", instance["VpcID"]),
-				},
-				Title: internal.StringAddressed("AWS VPC"),
-				Props: []*proto.Property{
-					{
-						Name:  "vpc-id",
-						Value: fmt.Sprintf("%v", instance["VpcID"]),
-					},
-				},
-			},
-		}
+
 		actors := []*proto.OriginActor{
 			{
 				Title: "The Continuous Compliance Framework",
@@ -201,17 +104,53 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				},
 			},
 		}
-		components := []*proto.ComponentReference{
+		components := []*proto.Component{
 			{
-				Identifier: "common-components/aws-ec2",
+				Identifier:  "common-components/amazon-ec2",
+				Type:        "service",
+				Title:       "Amazon EC2",
+				Description: "Amazon EC2 provides scalable compute capacity in the AWS cloud. It supports secure bootstrapping, access controls, encryption, and networking isolation.",
+				Purpose:     "Elastic virtual compute infrastructure for cloud-based applications.",
+			},
+		}
+		inventory := []*proto.InventoryItem{
+			{
+				Identifier: fmt.Sprintf("aws-ec2/%s", aws.ToString(instance.InstanceId)),
+				Type:       "web-server",
+				Title:      fmt.Sprintf("Amazon EC2 Instance [%s]", aws.ToString(instance.InstanceId)),
+				Props: []*proto.Property{
+					{
+						Name:  "instance-id",
+						Value: aws.ToString(instance.InstanceId),
+					},
+					{
+						Name:  "vpc-id",
+						Value: aws.ToString(instance.VpcId),
+					},
+					{
+						Name:  "subnet-id",
+						Value: aws.ToString(instance.SubnetId),
+					},
+				},
+				ImplementedComponents: []*proto.InventoryItemImplementedComponent{
+					{
+						Identifier: "common-components/amazon-ec2",
+					},
+				},
+			},
+		}
+		subjects := []*proto.Subject{
+			{
+				Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+				Identifier: "common-components/amazon-ec2",
 			},
 			{
-				Identifier: "common-components/aws-ec2-instance",
+				Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+				Identifier: fmt.Sprintf("aws-ec2/%s", aws.ToString(instance.InstanceId)),
 			},
 		}
 
-		findings := make([]*proto.Finding, 0)
-		observations := make([]*proto.Observation, 0)
+		evidences := make([]*proto.Evidence, 0)
 
 		for _, policyPath := range request.GetPolicyPaths() {
 
@@ -226,27 +165,19 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				),
 				subjects,
 				components,
+				inventory,
 				actors,
 				activities,
 			)
-			obs, finds, err := processor.GenerateResults(ctx, policyPath, instance)
-			observations = slices.Concat(observations, obs)
-			findings = slices.Concat(findings, finds)
+			evidence, err := processor.GenerateResults(ctx, policyPath, instance)
+			evidences = slices.Concat(evidences, evidence)
 			if err != nil {
 				accumulatedErrors = errors.Join(accumulatedErrors, err)
 			}
 		}
 
-		if err = apiHelper.CreateObservations(ctx, observations); err != nil {
-			l.logger.Error("Failed to send observations", "error", err)
-			evalStatus = proto.ExecutionStatus_FAILURE
-			accumulatedErrors = errors.Join(accumulatedErrors, err)
-			// We don't stop here, but rather continue to the next instance
-			continue
-		}
-
-		if err = apiHelper.CreateFindings(ctx, findings); err != nil {
-			l.logger.Error("Failed to send findings", "error", err)
+		if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
+			l.logger.Error("Failed to send evidences", "error", err)
 			evalStatus = proto.ExecutionStatus_FAILURE
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
 			// We don't stop here, but rather continue to the next instance
@@ -257,6 +188,24 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 	return &proto.EvalResponse{
 		Status: evalStatus,
 	}, accumulatedErrors
+}
+
+func getEC2Instances(ctx context.Context, client *ec2.Client) iter.Seq2[types.Instance, error] {
+	return func(yield func(types.Instance, error) bool) {
+		result, err := client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
+		if err != nil {
+			yield(types.Instance{}, err)
+			return
+		}
+
+		for _, reservation := range result.Reservations {
+			for _, instance := range reservation.Instances {
+				if !yield(instance, nil) {
+					return
+				}
+			}
+		}
+	}
 }
 
 func main() {
