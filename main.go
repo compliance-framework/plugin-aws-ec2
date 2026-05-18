@@ -121,7 +121,6 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 		if err != nil {
 			l.logger.Error("unable to load SDK config", "region", region, "error", err)
-			evalStatus = proto.ExecutionStatus_FAILURE
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
 			continue
 		}
@@ -477,36 +476,53 @@ func getInstanceVolumes(ctx context.Context, client *ec2.Client, instanceID stri
 	}
 }
 
+func chunkIDs(ids []string, chunkSize int) [][]string {
+	var chunks [][]string
+	for i := 0; i < len(ids); i += chunkSize {
+		end := i + chunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunks = append(chunks, ids[i:end])
+	}
+	return chunks
+}
+
 func getSnapshotsForVolumes(ctx context.Context, client *ec2.Client, volumeIDs []string) ([]types.Snapshot, error) {
 	if len(volumeIDs) == 0 {
 		return nil, nil
 	}
 
 	snapshots := make([]types.Snapshot, 0)
-	var nextToken *string
+	chunks := chunkIDs(volumeIDs, 200)
 
-	for {
-		result, err := client.DescribeSnapshots(ctx, &ec2.DescribeSnapshotsInput{
-			OwnerIds: []string{"self"},
-			Filters: []types.Filter{
-				{
-					Name:   aws.String("volume-id"),
-					Values: volumeIDs,
+	for _, chunk := range chunks {
+		var nextToken *string
+		for {
+			result, err := client.DescribeSnapshots(ctx, &ec2.DescribeSnapshotsInput{
+				OwnerIds: []string{"self"},
+				Filters: []types.Filter{
+					{
+						Name:   aws.String("volume-id"),
+						Values: chunk,
+					},
 				},
-			},
-			NextToken: nextToken,
-		})
-		if err != nil {
-			return nil, err
-		}
+				NextToken: nextToken,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		snapshots = append(snapshots, result.Snapshots...)
-		if aws.ToString(result.NextToken) == "" {
-			return snapshots, nil
-		}
+			snapshots = append(snapshots, result.Snapshots...)
+			if aws.ToString(result.NextToken) == "" {
+				break
+			}
 
-		nextToken = result.NextToken
+			nextToken = result.NextToken
+		}
 	}
+
+	return snapshots, nil
 }
 
 func getSnapshotPermissions(ctx context.Context, client *ec2.Client, snapshots []types.Snapshot) ([]EC2SnapshotPermission, error) {
@@ -532,7 +548,7 @@ func getSnapshotPermissions(ctx context.Context, client *ec2.Client, snapshots [
 		}
 
 		for _, createVolumePermission := range result.CreateVolumePermissions {
-			if string(createVolumePermission.Group) == "all" {
+			if createVolumePermission.Group == types.PermissionGroupAll {
 				permission.PublicShareEnabled = true
 				break
 			}
@@ -600,32 +616,37 @@ func getOwnedImagesForInstance(ctx context.Context, client *ec2.Client, instance
 		return mapsToImages(imagesByID), nil
 	}
 
-	var nextToken *string
-	for {
-		result, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{
-			Owners: []string{"self"},
-			Filters: []types.Filter{
-				{
-					Name:   aws.String("block-device-mapping.snapshot-id"),
-					Values: snapshotIDs,
+	chunks := chunkIDs(snapshotIDs, 200)
+	for _, chunk := range chunks {
+		var nextToken *string
+		for {
+			result, err := client.DescribeImages(ctx, &ec2.DescribeImagesInput{
+				Owners: []string{"self"},
+				Filters: []types.Filter{
+					{
+						Name:   aws.String("block-device-mapping.snapshot-id"),
+						Values: chunk,
+					},
 				},
-			},
-			NextToken: nextToken,
-		})
-		if err != nil {
-			return nil, err
-		}
+				NextToken: nextToken,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		for _, image := range result.Images {
-			imagesByID[aws.ToString(image.ImageId)] = image
-		}
+			for _, image := range result.Images {
+				imagesByID[aws.ToString(image.ImageId)] = image
+			}
 
-		if aws.ToString(result.NextToken) == "" {
-			return mapsToImages(imagesByID), nil
-		}
+			if aws.ToString(result.NextToken) == "" {
+				break
+			}
 
-		nextToken = result.NextToken
+			nextToken = result.NextToken
+		}
 	}
+
+	return mapsToImages(imagesByID), nil
 }
 
 func getFastSnapshotRestore(ctx context.Context, client *ec2.Client, snapshotIDs []string) ([]types.DescribeFastSnapshotRestoreSuccessItem, error) {
