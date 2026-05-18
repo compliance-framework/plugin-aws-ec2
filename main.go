@@ -539,7 +539,7 @@ func getSnapshotPermissions(ctx context.Context, client *ec2.Client, snapshots [
 			SnapshotId: aws.String(snapshotID),
 		})
 		if err != nil {
-			return nil, err
+			continue
 		}
 
 		permission := EC2SnapshotPermission{
@@ -655,29 +655,34 @@ func getFastSnapshotRestore(ctx context.Context, client *ec2.Client, snapshotIDs
 	}
 
 	fastSnapshotRestore := make([]types.DescribeFastSnapshotRestoreSuccessItem, 0)
-	var nextToken *string
+	chunks := chunkIDs(snapshotIDs, 200)
 
-	for {
-		result, err := client.DescribeFastSnapshotRestores(ctx, &ec2.DescribeFastSnapshotRestoresInput{
-			Filters: []types.Filter{
-				{
-					Name:   aws.String("snapshot-id"),
-					Values: snapshotIDs,
+	for _, chunk := range chunks {
+		var nextToken *string
+		for {
+			result, err := client.DescribeFastSnapshotRestores(ctx, &ec2.DescribeFastSnapshotRestoresInput{
+				Filters: []types.Filter{
+					{
+						Name:   aws.String("snapshot-id"),
+						Values: chunk,
+					},
 				},
-			},
-			NextToken: nextToken,
-		})
-		if err != nil {
-			return nil, err
-		}
+				NextToken: nextToken,
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		fastSnapshotRestore = append(fastSnapshotRestore, result.FastSnapshotRestores...)
-		if aws.ToString(result.NextToken) == "" {
-			return fastSnapshotRestore, nil
-		}
+			fastSnapshotRestore = append(fastSnapshotRestore, result.FastSnapshotRestores...)
+			if aws.ToString(result.NextToken) == "" {
+				break
+			}
 
-		nextToken = result.NextToken
+			nextToken = result.NextToken
+		}
 	}
+
+	return fastSnapshotRestore, nil
 }
 
 func getVolumeIDs(volumes []types.Volume) []string {
@@ -744,7 +749,7 @@ func getConfiguredRegions(pluginConfig map[string]string) []string {
 	regions := make([]string, 0, len(parts))
 	seen := make(map[string]struct{}, len(parts))
 	for _, part := range parts {
-		region := strings.Trim(part, " []\"'")
+		region := strings.TrimSpace(part)
 		if region == "" {
 			continue
 		}
