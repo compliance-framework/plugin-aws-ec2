@@ -189,13 +189,13 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 					},
 				},
 				{
-					Title: "Continuous Compliance Framework - Local SSH Plugin",
+					Title: "Continuous Compliance Framework - AWS EC2 Plugin",
 					Type:  "tool",
 					Links: []*proto.Link{
 						{
-							Href: "https://github.com/compliance-framework/plugin-local-ssh",
+							Href: "https://github.com/compliance-framework/plugin-aws-ec2",
 							Rel:  internal.StringAddressed("reference"),
-							Text: internal.StringAddressed("The Continuous Compliance Framework' Local SSH Plugin"),
+							Text: internal.StringAddressed("The Continuous Compliance Framework AWS EC2 Plugin"),
 						},
 					},
 				},
@@ -291,6 +291,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				}
 				evidences = slices.Concat(evidences, evidence)
 				if err != nil {
+					evalStatus = proto.ExecutionStatus_FAILURE
 					accumulatedErrors = errors.Join(accumulatedErrors, err)
 				}
 			}
