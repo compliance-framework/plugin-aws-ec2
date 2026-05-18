@@ -136,7 +136,7 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				break
 			}
 
-			policyInput, err := buildEC2PolicyInput(ctx, client, region, instance)
+			policyInput, err := buildEC2PolicyInput(ctx, l.logger, client, region, instance)
 			if err != nil {
 				l.logger.Error("unable to build policy input", "region", region, "instance_id", aws.ToString(instance.InstanceId), "error", err)
 				evalStatus = proto.ExecutionStatus_FAILURE
@@ -397,7 +397,7 @@ func getInstanceSecurityGroupIDs(instance types.Instance) []string {
 	return groupIDs
 }
 
-func buildEC2PolicyInput(ctx context.Context, client *ec2.Client, region string, instance types.Instance) (EC2PolicyInput, error) {
+func buildEC2PolicyInput(ctx context.Context, logger hclog.Logger, client *ec2.Client, region string, instance types.Instance) (EC2PolicyInput, error) {
 	securityGroups, err := getInstanceSecurityGroups(ctx, client, instance)
 	if err != nil {
 		return EC2PolicyInput{}, err
@@ -414,7 +414,7 @@ func buildEC2PolicyInput(ctx context.Context, client *ec2.Client, region string,
 		return EC2PolicyInput{}, err
 	}
 
-	snapshotPermissions, err := getSnapshotPermissions(ctx, client, snapshots)
+	snapshotPermissions, err := getSnapshotPermissions(ctx, logger, client, snapshots)
 	if err != nil {
 		return EC2PolicyInput{}, err
 	}
@@ -525,7 +525,7 @@ func getSnapshotsForVolumes(ctx context.Context, client *ec2.Client, volumeIDs [
 	return snapshots, nil
 }
 
-func getSnapshotPermissions(ctx context.Context, client *ec2.Client, snapshots []types.Snapshot) ([]EC2SnapshotPermission, error) {
+func getSnapshotPermissions(ctx context.Context, logger hclog.Logger, client *ec2.Client, snapshots []types.Snapshot) ([]EC2SnapshotPermission, error) {
 	permissions := make([]EC2SnapshotPermission, 0, len(snapshots))
 
 	for _, snapshot := range snapshots {
@@ -539,6 +539,7 @@ func getSnapshotPermissions(ctx context.Context, client *ec2.Client, snapshots [
 			SnapshotId: aws.String(snapshotID),
 		})
 		if err != nil {
+			logger.Warn("unable to get snapshot permissions", "snapshot_id", snapshotID, "error", err)
 			continue
 		}
 
