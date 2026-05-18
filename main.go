@@ -147,6 +147,13 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 
 			instanceID := aws.ToString(policyInput.Instance.InstanceId)
 			inventoryID := fmt.Sprintf("aws-ec2/%s/%s", region, instanceID)
+			instanceName := ""
+			for _, t := range policyInput.Instance.Tags {
+				if aws.ToString(t.Key) == "Name" {
+					instanceName = aws.ToString(t.Value)
+					break
+				}
+			}
 
 			l.logger.Info(
 				"collected ec2 evidence",
@@ -277,6 +284,11 @@ func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.Api
 				)
 
 				evidence, err := processor.GenerateResults(ctx, policyPath, policyInput)
+				if instanceName != "" {
+					for i := range evidence {
+						evidence[i].Title = fmt.Sprintf("%s | %s", instanceName, evidence[i].Title)
+					}
+				}
 				evidences = slices.Concat(evidences, evidence)
 				if err != nil {
 					accumulatedErrors = errors.Join(accumulatedErrors, err)
