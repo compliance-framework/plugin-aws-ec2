@@ -31,7 +31,7 @@ clean: # Cleanup build artifacts
 
 build: clean ## Build the plugin package
 	@mkdir -p dist/
-	@go build -o dist/plugin main.go
+	@go build -o dist/plugin .
 
 run: build ## Execute the Concom agent with the built plugin
 	@../agent/dist/./concom agent --config ./.config/config.yaml
