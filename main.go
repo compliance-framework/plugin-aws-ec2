@@ -75,7 +75,8 @@ func (l *CompliancePlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 }
 
 func (l *CompliancePlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelper) (*proto.InitResponse, error) {
-	return &proto.InitResponse{}, nil
+	ctx := context.Background()
+	return runner.InitWithSubjectsAndRisksFromPolicies(ctx, l.logger, req, apiHelper, buildSubjectTemplates())
 }
 
 func (l *CompliancePlugin) Eval(request *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
