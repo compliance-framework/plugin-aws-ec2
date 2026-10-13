@@ -1,0 +1,5 @@
+lisa-design:
+- Callers copied from mock-plugin-1 (release-please, release, preview) and mock-plugin-policies-1 (cut-prerelease), pins moved to workflows v1.5.2 (6e7fc9c); byte-identical to the merged batch-1 pilot plugin-file-attestation#9.
+- Manifest seeded at 0.4.0: releases/latest is v0.4.0 (final vX.Y.Z), its commit f044573 is an ancestor of main; no bootstrap-sha.
+- .goreleaser.yaml only gains release.prerelease: auto + replace_existing_artifacts: true; builds, binary: plugin and archive template unchanged (now equal to mock-plugin-1's).
+- README has no release section, so it is left unchanged.
