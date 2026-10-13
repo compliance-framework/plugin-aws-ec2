@@ -2,3 +2,6 @@ lisa-design:
 - .github/workflows/ci.yml is a verbatim copy of mock-plugin-1's caller pinned to workflows v1.5.1 (7b55019e), minus the mock's trial header comment; push trigger stays on main (the repo's default branch).
 - push.yml and test.yml are deleted; only push.yml called test.yml. release.yml and build-and-upload.yml are intentionally untouched (W3 replaces them).
 - .goreleaser.yaml archives.format -> formats: [tar.gz] to clear goreleaser check's deprecation; goreleaser release --snapshot --skip=publish before/after produced identical archives (5 tarballs, same names, contents LICENSE/README.md/plugin).
+
+lisa-selfreview:
+- pass 1 (core,go,go-plugin packs): approve, no findings. ci.yml matches the mock caller byte-for-byte after the header line; actionlint v1.7.12 clean; gofmt/tidy/vet/test/test -race clean; golangci-lint (shared config) 0 issues new-only vs layer 1, new-only vs main and full; goreleaser check exit 0 and snapshot build OK.
