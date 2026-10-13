@@ -2,3 +2,6 @@ lisa-design:
 - Plain dependency bump: the plugin already stores req.GetPolicyData().AsMap() in Configure and passes it to policyManager.NewPolicyProcessor (since the v0.7.0 bump), so no code change is needed for v0.9.1.
 - go directive stays at 1.26.1 (already equal to agent v0.9.1's requirement); transitive upgrades (aws-sdk-go-v2 core, smithy-go, x/*, api v0.21.0) come from go get/go mod tidy, not hand-picked.
 - Plugin keeps serving runner.RunnerV2GRPCPlugin and implements Init (protocol v2); nothing to do for W2-S2-T02.
+
+lisa-selfreview:
+- pass 1 (core,go,go-plugin packs): approve, no findings. Diff is go.mod/go.sum only; no replace/go.work, agent pinned to the final v0.9.1 as a direct requirement, build/vet/gofmt/test/test -race/golangci-lint (shared config, new-from-merge-base and full)/goreleaser check+snapshot build all pass locally.
