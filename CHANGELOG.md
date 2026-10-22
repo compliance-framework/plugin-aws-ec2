@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/compliance-framework/plugin-aws-ec2/compare/v0.4.1...v0.4.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** bump agent to v0.9.3, workflows to v1.7.0 ([#30](https://github.com/compliance-framework/plugin-aws-ec2/issues/30)) ([1d244ef](https://github.com/compliance-framework/plugin-aws-ec2/commit/1d244efbda57def5e39a0e8dc1bd9ec32691163d))
+* **deps:** update aws-sdk-go-v2 monorepo ([#28](https://github.com/compliance-framework/plugin-aws-ec2/issues/28)) ([52ca1b6](https://github.com/compliance-framework/plugin-aws-ec2/commit/52ca1b67e384527659c976105b59a741d51326c6))
+
 ## [0.4.1](https://github.com/compliance-framework/plugin-aws-ec2/compare/v0.4.0...v0.4.1) (2026-10-14)
 
 
