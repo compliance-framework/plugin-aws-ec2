@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.4](https://github.com/compliance-framework/plugin-aws-ec2/compare/v0.4.3...v0.4.4) (2026-11-27)
+
+
+### Bug Fixes
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#43](https://github.com/compliance-framework/plugin-aws-ec2/issues/43)) ([49dba9a](https://github.com/compliance-framework/plugin-aws-ec2/commit/49dba9ae23219ef34d7b540bb63f6001f8d1d37d))
+* **deps:** update aws-sdk-go-v2 monorepo ([#48](https://github.com/compliance-framework/plugin-aws-ec2/issues/48)) ([5da45a1](https://github.com/compliance-framework/plugin-aws-ec2/commit/5da45a10142bb4253791e6e03237e992e612913e))
+* **deps:** update aws-sdk-go-v2 monorepo ([#49](https://github.com/compliance-framework/plugin-aws-ec2/issues/49)) ([55fd638](https://github.com/compliance-framework/plugin-aws-ec2/commit/55fd638cc466d2c2fe642dde15b37dd992534a7e))
+* **deps:** update aws-sdk-go-v2 monorepo ([#51](https://github.com/compliance-framework/plugin-aws-ec2/issues/51)) ([6bc0c5e](https://github.com/compliance-framework/plugin-aws-ec2/commit/6bc0c5e9fc4239e1ec276bdb90ed9747d67dee97))
+* **deps:** update aws-sdk-go-v2 monorepo ([#53](https://github.com/compliance-framework/plugin-aws-ec2/issues/53)) ([227dc5f](https://github.com/compliance-framework/plugin-aws-ec2/commit/227dc5f8b74517096b665d3d0f523f22421397bc))
+* **deps:** update aws-sdk-go-v2 monorepo ([#54](https://github.com/compliance-framework/plugin-aws-ec2/issues/54)) ([0d98526](https://github.com/compliance-framework/plugin-aws-ec2/commit/0d9852602a8dc63aebe7e41ad4862cb1fcebb281))
+* **deps:** update aws-sdk-go-v2 monorepo ([#55](https://github.com/compliance-framework/plugin-aws-ec2/issues/55)) ([bf25163](https://github.com/compliance-framework/plugin-aws-ec2/commit/bf251636d7dfd1e36dae41e445a523a0e7f61f95))
+* **deps:** update go toolchain directive to v1.27.4 [security] ([#46](https://github.com/compliance-framework/plugin-aws-ec2/issues/46)) ([0393fd7](https://github.com/compliance-framework/plugin-aws-ec2/commit/0393fd720373745af933adec4b640fbada366f1b))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.11 ([#41](https://github.com/compliance-framework/plugin-aws-ec2/issues/41)) ([102ad86](https://github.com/compliance-framework/plugin-aws-ec2/commit/102ad860e183badb86425aeada86be8a913f8bf9))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.13 ([#45](https://github.com/compliance-framework/plugin-aws-ec2/issues/45)) ([3e42db7](https://github.com/compliance-framework/plugin-aws-ec2/commit/3e42db7308f42c8c3e40d98212640281d84f7632))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.33.17 ([#50](https://github.com/compliance-framework/plugin-aws-ec2/issues/50)) ([04b8673](https://github.com/compliance-framework/plugin-aws-ec2/commit/04b8673a17152bd6881affcab74418bd0625109e))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/ec2 to v1.343.0 ([#44](https://github.com/compliance-framework/plugin-aws-ec2/issues/44)) ([1ec4abb](https://github.com/compliance-framework/plugin-aws-ec2/commit/1ec4abbb9d899cfda09fc5a60e4cddb9e431c27b))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/ec2 to v1.347.0 ([#52](https://github.com/compliance-framework/plugin-aws-ec2/issues/52)) ([1928e1e](https://github.com/compliance-framework/plugin-aws-ec2/commit/1928e1ebbfcb43c2cdd98f46a11af91d6307a590))
+* **deps:** update module golang.org/x/crypto to v0.59.0 [security] ([#47](https://github.com/compliance-framework/plugin-aws-ec2/issues/47)) ([0f838b4](https://github.com/compliance-framework/plugin-aws-ec2/commit/0f838b45f9501245d0e337377bd2804fc9091f0e))
+
 ## [0.4.3](https://github.com/compliance-framework/plugin-aws-ec2/compare/v0.4.2...v0.4.3) (2026-11-02)
 
 
